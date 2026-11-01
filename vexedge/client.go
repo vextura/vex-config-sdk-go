@@ -40,8 +40,8 @@ func WithTimeout(d time.Duration) Option {
 	}
 }
 
-// New constructs a Client. endpoint is the service base URL (e.g.
-// "http://vex-vault:8200"); token is the bearer credential sent on every
+// New constructs a Client. endpoint is the service base URL, resolved by
+// the caller at runtime (RIP / cluster profile); token is the bearer credential sent on every
 // request. Either may be empty for tests against httptest.NewServer.
 func New(endpoint, token string, opts ...Option) *Client {
 	c := &Client{
@@ -51,9 +51,6 @@ func New(endpoint, token string, opts ...Option) *Client {
 	}
 	for _, o := range opts {
 		o(c)
-	}
-	if c.endpoint == "" {
-		c.endpoint = ""
 	}
 	return c
 }

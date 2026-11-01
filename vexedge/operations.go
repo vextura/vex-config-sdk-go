@@ -121,3 +121,90 @@ func (c *Client) DeleteServiceRoutes(ctx context.Context, in DeleteByFnInput) (D
 	}
 	return out, nil
 }
+
+// GetServiceFunctions calls GET /api/v1/functions/{tenant}.
+func (c *Client) GetServiceFunctions(ctx context.Context, in GetServiceFunctionsInput) (VexFnManifest, error) {
+	var zero VexFnManifest
+	path := fmt.Sprintf("/api/v1/functions/%s", url.PathEscape(in.Tenant))
+	u := c.endpoint + path
+
+	var bodyReader io.Reader
+
+	req, err := http.NewRequestWithContext(ctx, "GET", u, bodyReader)
+	if err != nil {
+		return zero, fmt.Errorf("GetServiceFunctions: new request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if in.CrossTenantConfirm != "" {
+		req.Header.Set("X-Vex-Cross-Tenant-Confirm", in.CrossTenantConfirm)
+	}
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return zero, fmt.Errorf("GetServiceFunctions: http do: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		return zero, decodeError(resp)
+	}
+	if resp.StatusCode == http.StatusNoContent {
+		return zero, nil
+	}
+	var out VexFnManifest
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return zero, fmt.Errorf("GetServiceFunctions: decode response: %w", err)
+	}
+	return out, nil
+}
+
+// UpsertServiceFunction calls POST /api/v1/functions/{tenant}/{fnName}.
+func (c *Client) UpsertServiceFunction(ctx context.Context, in UpsertServiceFunctionInput) (UpsertServiceFunctionOutput, error) {
+	var zero UpsertServiceFunctionOutput
+	path := fmt.Sprintf("/api/v1/functions/%s/%s", url.PathEscape(in.Tenant), url.PathEscape(in.FnName))
+	u := c.endpoint + path
+
+	var bodyReader io.Reader
+	// @httpPayload: the member IS the body.
+	body, err := json.Marshal(in.Body)
+	if err != nil {
+		return zero, fmt.Errorf("UpsertServiceFunction: marshal body: %w", err)
+	}
+	bodyReader = bytes.NewReader(body)
+
+	req, err := http.NewRequestWithContext(ctx, "POST", u, bodyReader)
+	if err != nil {
+		return zero, fmt.Errorf("UpsertServiceFunction: new request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if in.CrossTenantConfirm != "" {
+		req.Header.Set("X-Vex-Cross-Tenant-Confirm", in.CrossTenantConfirm)
+	}
+	if in.ChangedBy != "" {
+		req.Header.Set("X-Changed-By", in.ChangedBy)
+	}
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return zero, fmt.Errorf("UpsertServiceFunction: http do: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		return zero, decodeError(resp)
+	}
+	if resp.StatusCode == http.StatusNoContent {
+		return zero, nil
+	}
+	var out UpsertServiceFunctionOutput
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return zero, fmt.Errorf("UpsertServiceFunction: decode response: %w", err)
+	}
+	return out, nil
+}

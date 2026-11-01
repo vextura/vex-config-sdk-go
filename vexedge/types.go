@@ -19,16 +19,71 @@ type DeleteByFnOutput struct {
 	Deleted bool   `json:"deleted"`
 }
 
+// GetServiceFunctionsInput mirrors the Smithy structure of the same name.
+type GetServiceFunctionsInput struct {
+	Tenant             string `json:"tenant"`
+	CrossTenantConfirm string `json:"cross_tenant_confirm,omitempty"`
+}
+
+// UpsertServiceFunctionBody mirrors the Smithy structure of the same name.
+type UpsertServiceFunctionBody struct {
+	Functions []*VexFnConfig `json:"functions"`
+}
+
+// UpsertServiceFunctionInput mirrors the Smithy structure of the same name.
+type UpsertServiceFunctionInput struct {
+	Tenant             string                     `json:"tenant"`
+	FnName             string                     `json:"fn_name"`
+	CrossTenantConfirm string                     `json:"cross_tenant_confirm,omitempty"`
+	ChangedBy          string                     `json:"changed_by,omitempty"`
+	Body               *UpsertServiceFunctionBody `json:"body"`
+}
+
+// UpsertServiceFunctionOutput mirrors the Smithy structure of the same name.
+type UpsertServiceFunctionOutput struct {
+	Tenant  string `json:"tenant"`
+	FnName  string `json:"fn_name"`
+	FnCount int    `json:"fn_count"`
+}
+
 // VexFnConfig mirrors the Smithy structure of the same name.
 type VexFnConfig struct {
-	Name           string `json:"name"`
-	Image          string `json:"image"`
-	MemoryMb       int    `json:"memory_mb,omitempty"`
-	CpuMilli       int    `json:"cpu_milli,omitempty"`
-	TimeoutSeconds int    `json:"timeout_seconds,omitempty"`
-	WarmInstances  int    `json:"warm_instances,omitempty"`
-	MaxInstances   int    `json:"max_instances,omitempty"`
-	Tenant         string `json:"tenant,omitempty"`
-	NetworkMode    string `json:"network_mode,omitempty"`
-	Untrusted      bool   `json:"untrusted,omitempty"`
+	Name           string              `json:"name,omitempty"`
+	Image          string              `json:"image,omitempty"`
+	MemoryMb       int                 `json:"memory_mb,omitempty"`
+	CpuMilli       int                 `json:"cpu_milli,omitempty"`
+	TimeoutSeconds int                 `json:"timeout_seconds,omitempty"`
+	WarmInstances  int                 `json:"warm_instances,omitempty"`
+	MaxInstances   int                 `json:"max_instances,omitempty"`
+	Tenant         string              `json:"tenant,omitempty"`
+	Cmd            []string            `json:"cmd,omitempty"`
+	Env            []string            `json:"env,omitempty"`
+	NetworkMode    string              `json:"network_mode,omitempty"`
+	Volumes        []*VexFnVolumeMount `json:"volumes,omitempty"`
+	Retry          *VexRetry           `json:"retry,omitempty"`
+	Untrusted      bool                `json:"untrusted,omitempty"`
+}
+
+// VexFnManifest mirrors the Smithy structure of the same name.
+type VexFnManifest struct {
+	ServiceName   string         `json:"service_name,omitempty"`
+	Tenant        string         `json:"tenant,omitempty"`
+	GeneratedAt   string         `json:"generated_at,omitempty"`
+	Functions     []*VexFnConfig `json:"functions"`
+	OwnerTeam     string         `json:"owner_team,omitempty"`
+	CreatedByUser string         `json:"created_by_user,omitempty"`
+}
+
+// VexFnVolumeMount mirrors the Smithy structure of the same name.
+type VexFnVolumeMount struct {
+	HostPath      string `json:"host_path"`
+	ContainerPath string `json:"container_path"`
+	ReadOnly      bool   `json:"read_only,omitempty"`
+}
+
+// VexRetry mirrors the Smithy structure of the same name.
+type VexRetry struct {
+	MaxAttempts int    `json:"max_attempts,omitempty"`
+	BackoffMs   int    `json:"backoff_ms,omitempty"`
+	Policy      string `json:"policy,omitempty"`
 }
