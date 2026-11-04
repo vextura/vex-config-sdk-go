@@ -539,7 +539,14 @@ func (c *Client) UpdateServiceLifecycle(ctx context.Context, in UpdateLifecycleI
 	u := c.endpoint + path
 
 	var bodyReader io.Reader
-	body, err := json.Marshal(in)
+	// Only body members: path, query and header members are not serialized.
+	body, err := json.Marshal(struct {
+		Status string `json:"status"`
+		Reason string `json:"reason,omitempty"`
+	}{
+		Status: in.Status,
+		Reason: in.Reason,
+	})
 	if err != nil {
 		return fmt.Errorf("UpdateServiceLifecycle: marshal body: %w", err)
 	}

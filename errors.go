@@ -6,11 +6,14 @@ package config
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 )
 
-// ErrorEnvelope is the wire shape every server returns on error.
+// ErrorEnvelope is the wire shape every Vextura server returns on error
+// (Vextura-internal error envelope). OAuth2 flows (RFC 6749 §5.2) use a
+// different shape — see OAuth2Error and decodeOAuth2ErrorOrFallback below.
 type ErrorEnvelope struct {
 	Code      string         `json:"code"`
 	Message   string         `json:"message"`
@@ -29,7 +32,62 @@ func (e ErrorEnvelope) Error() string {
 	if e.Message != "" {
 		return e.Message
 	}
+	if e.Code != "" {
+		return e.Code
+	}
+	// A body that is not the envelope (plain text, `{"error": ...}` from a
+	// non-generated handler, or empty) must still say what happened: the HTTP
+	// status is always known, "unknown error" never is useful.
+	if e.Status > 0 {
+		return fmt.Sprintf("HTTP %d %s", e.Status, http.StatusText(e.Status))
+	}
 	return "unknown error"
+}
+
+// statusError carries the decoded envelope plus the sentinel for its status.
+// It prints as ONE line (the envelope) while errors.Is(err, ErrNotFound) and
+// errors.As(err, &ErrorEnvelope{}) both still match; errors.Join printed the
+// envelope and the sentinel on two lines.
+type statusError struct {
+	env      ErrorEnvelope
+	sentinel error
+}
+
+func (e statusError) Error() string   { return e.env.Error() }
+func (e statusError) Unwrap() []error { return []error{e.env, e.sentinel} }
+
+// OAuth2Error is the RFC 6749 §5.2 error response shape. Returned by any
+// endpoint that emits an OAuth2 error envelope (typically /auth/token and
+// /auth/revoke). Callers can pattern-match with errors.As or the
+// IsOAuth2Error helper.
+type OAuth2Error struct {
+	Code        string // "invalid_grant", "invalid_client", "invalid_request", "unauthorized_client", "unsupported_grant_type", "invalid_scope", etc.
+	Description string // human-readable explanation (may be empty per §5.2)
+	URI         string // optional info URL
+	HTTPStatus  int    // originating HTTP status for callers who care
+}
+
+func (e *OAuth2Error) Error() string {
+	if e.Description != "" {
+		return e.Code + ": " + e.Description
+	}
+	if e.Code != "" {
+		return e.Code
+	}
+	if e.HTTPStatus > 0 {
+		return fmt.Sprintf("oauth2 error (http %d)", e.HTTPStatus)
+	}
+	return "oauth2 error"
+}
+
+// IsOAuth2Error extracts a *OAuth2Error from any error, if present.
+// Works transparently through errors.Join / wrapped errors.
+func IsOAuth2Error(err error) (*OAuth2Error, bool) {
+	var oe *OAuth2Error
+	if errors.As(err, &oe) {
+		return oe, true
+	}
+	return nil, false
 }
 
 // Sentinel errors callers can match with errors.Is. Decoded from
@@ -45,16 +103,69 @@ var (
 
 // decodeError reads an HTTP response into an ErrorEnvelope and joins it with
 // the matching sentinel so both errors.As(&env) and errors.Is(sentinel) work.
+// This is the Vextura-envelope-only decoder — use decodeOAuth2ErrorOrFallback
+// on operations that may return OAuth2 error shapes.
 func decodeError(resp *http.Response) error {
 	var env ErrorEnvelope
 	body, _ := io.ReadAll(resp.Body)
 	_ = json.Unmarshal(body, &env)
+	if env.Message == "" {
+		// Non-generated handlers answer {"error": "..."}; keep their text.
+		var alt struct {
+			Error string `json:"error"`
+		}
+		if json.Unmarshal(body, &alt) == nil {
+			env.Message = alt.Error
+		}
+	}
 	env.Status = resp.StatusCode
 	sentinel := sentinelFor(env.Code, resp.StatusCode)
 	if sentinel != nil {
-		return errors.Join(env, sentinel)
+		return statusError{env: env, sentinel: sentinel}
 	}
 	return env
+}
+
+// decodeOAuth2ErrorOrFallback tries the OAuth2 error envelope first, falls
+// back to the Vextura envelope, then to a raw HTTP error. Preserves the
+// Vextura sentinel semantics (errors.Is(err, ErrUnauthorized) etc.) when
+// falling back so downstream callers don't have to know which envelope
+// the server used.
+func decodeOAuth2ErrorOrFallback(resp *http.Response) error {
+	body, _ := io.ReadAll(resp.Body)
+
+	// Try OAuth2 envelope first — RFC 6749 §5.2.
+	var oe struct {
+		Error            string `json:"error"`
+		ErrorDescription string `json:"error_description"`
+		ErrorURI         string `json:"error_uri,omitempty"`
+	}
+	if err := json.Unmarshal(body, &oe); err == nil && oe.Error != "" {
+		return &OAuth2Error{
+			Code:        oe.Error,
+			Description: oe.ErrorDescription,
+			URI:         oe.ErrorURI,
+			HTTPStatus:  resp.StatusCode,
+		}
+	}
+
+	// Fall back to Vextura envelope — preserve sentinel semantics.
+	var env ErrorEnvelope
+	if err := json.Unmarshal(body, &env); err == nil && (env.Code != "" || env.Message != "") {
+		env.Status = resp.StatusCode
+		sentinel := sentinelFor(env.Code, resp.StatusCode)
+		if sentinel != nil {
+			return statusError{env: env, sentinel: sentinel}
+		}
+		return env
+	}
+
+	// Fall back to raw body truncated.
+	snippet := string(body)
+	if len(snippet) > 200 {
+		snippet = snippet[:200] + "..."
+	}
+	return fmt.Errorf("http %d: %s", resp.StatusCode, snippet)
 }
 
 func sentinelFor(code string, status int) error {
