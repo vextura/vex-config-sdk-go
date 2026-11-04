@@ -78,6 +78,10 @@ type ServiceRecord struct {
 	Status           string                 `json:"status"`
 	DnsName          string                 `json:"dns_name,omitempty"`
 	HealthCheckUrl   string                 `json:"health_check_url,omitempty"`
+	ProbeStatus      string                 `json:"probe_status,omitempty"`
+	ProbeCode        int                    `json:"probe_code,omitempty"`
+	ProbeLatencyMs   int                    `json:"probe_latency_ms,omitempty"`
+	ProbeAt          string                 `json:"probe_at,omitempty"`
 	LastHeartbeat    string                 `json:"last_heartbeat,omitempty"`
 	RegisteredAt     string                 `json:"registered_at,omitempty"`
 	Meta             map[string]string      `json:"meta,omitempty"`
